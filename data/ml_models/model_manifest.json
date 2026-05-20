@@ -1,0 +1,110 @@
+{
+  "created_at": "2026-05-06T12:39:04",
+  "target": "pir",
+  "best_model_name": "XGBoost",
+  "feature_count": 174,
+  "rows": 20332,
+  "train_rows_for_backtest": 20155,
+  "holdout_rows": 177,
+  "holdout_season": 2025,
+  "holdout_round_min": 41,
+  "holdout_round_max": 42,
+  "latest_data_season": 2025,
+  "latest_data_round": 42,
+  "blend_weights": {
+    "Ridge": 0.0,
+    "RandomForest": 0.0,
+    "LightGBM": 0.0,
+    "XGBoost": 1.0
+  },
+  "selected_base_model": "XGBoost",
+  "validation_metrics": [
+    {
+      "model": "Ridge",
+      "MAE": 5.6719,
+      "RMSE": 7.3341,
+      "R2": 0.2285
+    },
+    {
+      "model": "RandomForest",
+      "MAE": 5.7366,
+      "RMSE": 7.3042,
+      "R2": 0.2348
+    },
+    {
+      "model": "LightGBM",
+      "MAE": 5.6983,
+      "RMSE": 7.2792,
+      "R2": 0.24
+    },
+    {
+      "model": "XGBoost",
+      "MAE": 5.5935,
+      "RMSE": 7.1679,
+      "R2": 0.2631
+    },
+    {
+      "model": "WeightedBlend",
+      "MAE": 5.6654,
+      "RMSE": 7.2477,
+      "R2": 0.2466
+    },
+    {
+      "model": "WeightedBlend + PlayoffAdj",
+      "MAE": 5.5922,
+      "RMSE": 7.2125,
+      "R2": 0.2539
+    },
+    {
+      "model": "WeightedBlend + TailRisk",
+      "MAE": 5.727,
+      "RMSE": 7.4615,
+      "R2": 0.2015
+    }
+  ],
+  "minutes_validation_metrics": {
+    "model": "MinutesModel",
+    "MAE": 4.5915,
+    "RMSE": 5.9554,
+    "R2": 0.4889
+  },
+  "tail_classifier_metrics": [
+    {
+      "model": "20+ PIR classifier",
+      "positive_rate": 0.1017,
+      "AUC": 0.6939,
+      "avg_probability": 0.2848
+    },
+    {
+      "model": "<=0 PIR classifier",
+      "positive_rate": 0.1977,
+      "AUC": 0.7352,
+      "avg_probability": 0.3834
+    }
+  ],
+  "tail_risk_params": {
+    "high_threshold": 20.0,
+    "low_threshold": 0.0,
+    "high_rate": 0.10925328702555197,
+    "low_rate": 0.17181840734309103,
+    "high_mean": 24.802452316076295,
+    "mid_mean": 8.529882677708764,
+    "low_mean": -1.5506786023678891,
+    "high_weight": 5.695399373428635,
+    "low_weight": 3.427390835226062,
+    "enabled": false
+  },
+  "playoff_adjustment": {
+    "eligible_train_rows": 1092,
+    "eligible_holdout_rows": 177,
+    "enabled": true,
+    "candidate_MAE": 5.5922,
+    "base_MAE": 5.5935
+  },
+  "backup_dir": "C:\\Users\\i.bouras\\OneDrive - Systems Sunlight S.A\\Desktop\\Euroleague Project\\data\\ml_models_backup_20260506_123904",
+  "notes": [
+    "Retrained from local euroleague.sqlite using corrected minutes-based player filtering.",
+    "Final model is fitted on all played rows after holdout evaluation.",
+    "Calibration payloads are computed from the latest holdout rounds."
+  ]
+}

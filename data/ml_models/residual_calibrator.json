@@ -1,0 +1,73 @@
+{
+  "strategy": "mean_validation_residual_by_pred_minutes_bucket_and_starter",
+  "min_combo_samples": 30,
+  "min_bucket_samples": 30,
+  "minutes_bins": [
+    0,
+    10,
+    20,
+    30,
+    60
+  ],
+  "minutes_labels": [
+    "0-10",
+    "10-20",
+    "20-30",
+    "30+"
+  ],
+  "global_correction": -0.2134090611748461,
+  "bucket_corrections": {
+    "0-10": {
+      "count": 15,
+      "correction": 2.8488722277745495
+    },
+    "10-20": {
+      "count": 84,
+      "correction": -0.9384801763332188
+    },
+    "20-30": {
+      "count": 76,
+      "correction": 0.19342737151581202
+    },
+    "30+": {
+      "count": 2,
+      "correction": -8.187316333888655
+    }
+  },
+  "starter_corrections": {
+    "0": {
+      "count": 97,
+      "correction": -0.03656640973324607
+    },
+    "1": {
+      "count": 80,
+      "correction": -0.427830776047786
+    }
+  },
+  "combo_corrections": {
+    "0-10|0": {
+      "count": 15,
+      "correction": 2.8488722277745495
+    },
+    "10-20|0": {
+      "count": 68,
+      "correction": -0.9060575862612061
+    },
+    "10-20|1": {
+      "count": 16,
+      "correction": -1.0762761841392738
+    },
+    "20-30|0": {
+      "count": 14,
+      "correction": 1.0951350503584922
+    },
+    "20-30|1": {
+      "count": 62,
+      "correction": -0.01018403983576099
+    },
+    "30+|1": {
+      "count": 2,
+      "correction": -8.187316333888655
+    }
+  }
+}

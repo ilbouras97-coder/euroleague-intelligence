@@ -1,0 +1,14 @@
+euroleague_api==0.1.0
+pandas>=2.2
+pyarrow>=15
+requests>=2.31
+sqlalchemy>=2.0
+typer>=0.12
+rich>=13
+streamlit>=1.36
+plotly>=5.22
+scipy>=1.13
+joblib>=1.4
+scikit-learn>=1.5
+xgboost>=2.0
+lightgbm>=4.0
