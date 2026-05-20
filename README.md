@@ -1,175 +1,317 @@
-# Euroleague Project
+# EuroLeague Dashboard Project
 
 ## Recommended Architecture
 
-Για έναν developer, η καλύτερη αρχική επιλογή είναι **Streamlit + Python modules**.
+For a single developer, the best initial choice is:
 
-Γιατί:
+Streamlit + Python modules
 
-- Έχεις ένα ενιαίο Python codebase για ingestion, feature engineering, μοντέλα και UI.
-- Το dashboard χτίζεται γρήγορα χωρίς ξεχωριστό React state/API layer.
-- Το caching του Streamlit και το local SQLite/Parquet layer καλύπτουν άνετα ένα analytics MVP.
-- Αν αργότερα χρειαστεί multi-user app, auth, background jobs ή public API, μεταφέρουμε τον ίδιο data/model layer πίσω από FastAPI και κρατάμε Streamlit ή React ως frontend.
+### Why this architecture?
 
-Πρόταση φάσεων:
+- It keeps ingestion, feature engineering, modeling, and UI in a single Python codebase.
+- The dashboard can be built quickly without a separate React state layer or API layer.
+- Streamlit caching and a local SQLite/Parquet storage layer are more than enough for an analytics MVP.
+- If the project later requires multi-user access, authentication, background jobs, or a public API, the same data/model layer can be moved behind FastAPI while keeping Streamlit or React as the frontend.
 
-1. **MVP:** Streamlit, SQLite, Parquet cache, sklearn/xgboost models saved as artifacts.
-2. **Production-ish:** FastAPI μόνο για inference endpoints, Streamlit/React για UI.
-3. **Full product:** Postgres, scheduled ingestion, model registry, React frontend.
+## Development Phases
 
-## Storage Design
+### Phase 1 — MVP
 
-Το Step 1 αποθηκεύει δύο επίπεδα δεδομένων:
+- Streamlit dashboard
+- SQLite curated database
+- Parquet raw cache
+- scikit-learn / XGBoost models saved as artifacts
 
-- `data/raw/*.parquet`: immutable-ish API cache ανά dataset/season. Χρήσιμο για να μη χτυπάμε συνέχεια το API.
-- `data/euroleague.sqlite`: curated tables για dashboard queries και feature engineering.
+### Phase 2 — Production-like Setup
 
-Core tables:
+- FastAPI for inference endpoints
+- Streamlit or React for the UI
 
-- `games`: πρόγραμμα, scores, home/away teams, played flag.
-- `player_boxscores`: player game stats, PIR/Valuation, minutes, points, rebounds, assists.
-- `team_quarter_scores`: team scores by quarter/overtime where available.
-- `shots`: shot locations/events, χρήσιμο για shooting charts.
-- `ingestion_runs`: metadata για κάθε ingestion run.
+### Phase 3 — Full Product
 
-Οι σεζόν 2023-2026 στη Euroleague API αντιστοιχούν σε start years `2023`, `2024`, `2025`.
+- PostgreSQL database
+- Scheduled ingestion jobs
+- Model registry
+- React frontend
 
-## Step 1 Usage
+---
 
-Install dependencies:
+# Storage Design
 
-```powershell
+Step 1 stores data in two layers:
+
+## Raw Data Cache
+
+data/raw/*.parquet
+
+This is an immutable-ish API cache per dataset and season.
+It is useful because it prevents repeated calls to the EuroLeague API.
+
+## Curated Database
+
+data/euroleague.sqlite
+
+This database contains curated tables used for dashboard queries and feature engineering.
+
+## Core Tables
+
+### games
+
+Contains:
+
+- Game schedule
+- Scores
+- Home and away teams
+- Played flag
+
+### player_boxscores
+
+Contains player-level game statistics, including:
+
+- PIR / Valuation
+- Minutes
+- Points
+- Rebounds
+- Assists
+
+### team_quarter_scores
+
+Contains team scores by quarter and overtime, where available.
+
+### shots
+
+Contains shot locations and shot events.
+This table is useful for shooting charts.
+
+### ingestion_runs
+
+Contains metadata for each ingestion run.
+
+## Season Mapping
+
+EuroLeague API seasons from 2023 to 2026 correspond to the following start years:
+
+2023, 2024, 2025
+
+---
+
+# Step 1 — Data Ingestion
+
+## Install Dependencies
+
 python -m pip install -r requirements.txt
-```
 
-Run ingestion:
+## Run Full Ingestion
 
-```powershell
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025
-```
 
-Για πιο γρήγορο πρώτο test:
+## Quick First Test
 
-```powershell
+To run a faster test for one season and only the games dataset:
+
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2023 --datasets games
-```
 
-Force refresh raw cache:
+## Force Refresh Raw Cache
 
-```powershell
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025 --force-refresh
-```
 
-Development ingestion για γρήγορο test:
+## Development Ingestion Test
 
-```powershell
+Use this for a quick development test with only one game per season:
+
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2023 --max-games-per-season 1 --force-refresh
-```
 
-## Step 2/3: Analytics Layer and Dashboard
+---
 
-Το project περιλαμβάνει πλέον:
+# Steps 2/3 — Analytics Layer and Dashboard
 
-- `src/euroleague_dashboard/analytics.py`: player/team game logs, season averages, overall averages, optional date filtering.
-- `app.py`: Streamlit dashboard με Overview, Player Dashboard, Team Dashboard, Shot Chart και Compare.
-- `assets/logos/teams`: local team logo assets extracted from the EuroLeague 2025-26 team logo pack.
-- `run_dashboard.bat`: διπλό click για άνοιγμα του dashboard.
-- `update_data.bat`: διπλό click για ανανέωση δεδομένων 2023-2025.
+The project now includes:
 
-Run dashboard:
+src/euroleague_dashboard/analytics.py
 
-```powershell
-streamlit run app.py
-```
+Provides:
 
-Ή σε Windows:
+- Player game logs
+- Team game logs
+- Season averages
+- Overall averages
+- Optional date filtering
 
-```powershell
-.\run_dashboard.bat
-```
+app.py
 
-Behavior για μέσους όρους:
+Streamlit dashboard with the following sections:
 
-- Αν δεν επιλεγεί ημερομηνία, το dashboard δείχνει συνολικό μέσο όρο για όλα τα διαθέσιμα games.
-- Αν ενεργοποιηθεί `Filter by date`, οι μέσοι όροι υπολογίζονται μόνο στο επιλεγμένο date range.
-- Σε κάθε περίπτωση υπάρχει ξεχωριστός πίνακας με μέσο όρο ανά σεζόν.
+- Overview
+- Player Dashboard
+- Team Dashboard
+- Shot Chart
+- Compare
 
-## Current Data Status
+assets/logos/teams
 
-Το full ingestion έχει ολοκληρωθεί για seasons `2023`, `2024`, `2025`.
+Local team logo assets extracted from the EuroLeague 2025-26 team logo pack.
 
-Τρέχοντα counts στη βάση:
-
-- Games: 1,044
-- Player boxscore rows: 29,015
-- Team quarter score rows: 2,088
-- Shots: 162,474
-
-## User Instructions
-
-### 1. Open the project folder
-
-Ο φάκελος βρίσκεται εδώ:
-
-```powershell
-C:\Users\i.bouras\OneDrive - Systems Sunlight S.A\Desktop\Euroleague Project
-```
-
-### 2. Install dependencies once
-
-Άνοιξε PowerShell μέσα στον φάκελο και τρέξε:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-### 3. Run the web app
-
-Ο πιο απλός τρόπος είναι διπλό click στο:
-
-```powershell
 run_dashboard.bat
-```
 
-Εναλλακτικά από PowerShell:
+Double-click file for opening the dashboard on Windows.
 
-```powershell
+update_data.bat
+
+Double-click file for refreshing data from seasons 2023-2025.
+
+---
+
+# Run the Dashboard
+
+From the project folder:
+
+streamlit run app.py
+
+Or on Windows:
+
+.\run_dashboard.bat
+
+---
+
+# Average Calculation Behavior
+
+## Without Date Filter
+
+If no date filter is selected, the dashboard shows overall averages across all available games.
+
+## With Date Filter
+
+If Filter by date is enabled, averages are calculated only for the selected date range.
+
+In both cases, the dashboard also includes a separate table with averages by season.
+
+---
+
+# Current Data Status
+
+Full ingestion has been completed for the following seasons:
+
+2023, 2024, 2025
+
+## Current Database Counts
+
+Table | Rows
+--- | ---
+Games | 1,044
+Player boxscore rows | 29,015
+Team quarter score rows | 2,088
+Shots | 162,474
+
+---
+
+# User Instructions
+
+## 1. Open the Project Folder
+
+The project folder is located here:
+
+C:\Users\i.bouras\OneDrive - Systems Sunlight S.A\Desktop\Euroleague Project
+
+## 2. Install Dependencies Once
+
+Open PowerShell inside the project folder and run:
+
+python -m pip install -r requirements.txt
+
+## 3. Run the Web App
+
+The easiest way is to double-click:
+
+run_dashboard.bat
+
+Alternatively, from PowerShell:
+
 cd "C:\Users\i.bouras\OneDrive - Systems Sunlight S.A\Desktop\Euroleague Project"
 python -m streamlit run app.py --server.port 8501
-```
 
-Μετά άνοιξε στον browser:
+Then open the following URL in your browser:
 
-```text
 http://localhost:8501
-```
 
-### 4. Refresh data
+## 4. Refresh Data
 
-Για κανονική ανανέωση χωρίς να ξανακατεβάζει ό,τι υπάρχει ήδη στην cache:
+For a normal refresh without downloading data that already exists in the cache:
 
-```powershell
 .\update_data.bat
-```
 
-Ή:
+Or:
 
-```powershell
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025
-```
 
-Για πλήρες refresh από το API, μόνο αν πραγματικά το χρειαστείς:
+For a full refresh from the API, use this only if necessary:
 
-```powershell
 python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025 --force-refresh
-```
 
-### 5. Dashboard usage
+---
 
-- `Overview`: improved filter pane, συνολικά KPIs, leaderboard, top players, season trend.
-- `Player Dashboard`: διάλεξε παίκτη, δες μέσους όρους ανά σεζόν, game log, FG%, 3PT%, steals, blocks και turnovers.
-- `Team Dashboard`: διάλεξε ομάδα, δες πλήρες όνομα/logo, leaderboard, PIR, PIR Allowed, wins/losses και game log.
-- `Shot Chart`: φίλτραρε ανά ομάδα, παίκτη και made/missed shots. Made shots είναι πράσινα και missed shots κόκκινα.
-- `Compare`: σύγκριση 2 ομάδων και 2 παικτών με πίνακες και spider charts.
-- Sidebar `Seasons`: διάλεξε ποιες σεζόν συμμετέχουν στους υπολογισμούς.
-- Sidebar `Filter by date`: αν είναι off, βλέπεις συνολικό μέσο όρο. Αν είναι on, βλέπεις μόνο το επιλεγμένο date range.
+# Dashboard Usage
+
+## Overview
+
+Includes:
+
+- Improved filter pane
+- Overall KPIs
+- Leaderboard
+- Top players
+- Season trend
+
+## Player Dashboard
+
+Select a player to view:
+
+- Season averages
+- Game log
+- Field goal percentage
+- Three-point percentage
+- Steals
+- Blocks
+- Turnovers
+
+## Team Dashboard
+
+Select a team to view:
+
+- Full team name
+- Team logo
+- Leaderboard
+- PIR
+- PIR allowed
+- Wins and losses
+- Game log
+
+## Shot Chart
+
+Filter by:
+
+- Team
+- Player
+- Made or missed shots
+
+Shot colors:
+
+- Made shots are green
+- Missed shots are red
+
+## Compare
+
+Compare:
+
+- Two teams
+- Two players
+
+Includes comparison tables and spider charts.
+
+## Sidebar Seasons
+
+Select which seasons should be included in the calculations.
+
+## Sidebar Filter by Date
+
+- If disabled, the dashboard shows overall averages.
+- If enabled, the dashboard only uses the selected date range.
