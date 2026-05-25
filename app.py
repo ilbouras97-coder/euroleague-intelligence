@@ -584,7 +584,25 @@ def apply_styles(theme: str = "Dark") -> None:
             mask-image: linear-gradient(to bottom, black, transparent 72%);
         }
         .block-container {max-width: 1360px; padding: 0 1.75rem 2.75rem;}
-        #MainMenu, footer, header {visibility: hidden;}
+        #MainMenu, footer {visibility: hidden;}
+        header {visibility: visible;}
+        [data-testid="stHeader"] {background: transparent;}
+        [data-testid="stHeader"] [data-testid="stToolbar"] {visibility: visible;}
+        [data-testid="stHeader"] [data-testid="stToolbar"] button:not([data-testid="stExpandSidebarButton"]) {
+            visibility: hidden;
+        }
+        [data-testid="stHeader"] [data-testid="stToolbar"] div:has([data-testid="stExpandSidebarButton"]) {
+            visibility: visible !important;
+        }
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stExpandSidebarButton"] {
+            visibility: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            z-index: 9999 !important;
+        }
         h1, h2, h3, p, label, .stMarkdown {color: var(--text);}
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg, #101827 0%, #0b1524 100%);
@@ -3204,8 +3222,8 @@ def overview_page() -> None:
 
 
 def player_page() -> None:
-    if players.empty:
-        st.info("No player data available.")
+    if filtered_players.empty:
+        st.info("No players match the current filters.")
         return
     selected = st.selectbox("Select Athlete", sorted(filtered_players["player_name"].dropna().unique().tolist()))
     rows = filtered_players[filtered_players["player_name"] == selected].copy()
