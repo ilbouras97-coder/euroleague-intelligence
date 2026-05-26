@@ -3183,8 +3183,11 @@ def latest_file_timestamp(paths: list[Path]):
 
 @st.cache_data(show_spinner=False)
 def load_refresh_status() -> dict[str, str]:
-    data_timestamp = None
+    data_timestamps = []
     if DB_PATH.exists():
+        file_timestamp = latest_file_timestamp([DB_PATH])
+        if file_timestamp is not None:
+            data_timestamps.append(file_timestamp)
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 row = conn.execute(
@@ -3196,15 +3199,16 @@ def load_refresh_status() -> dict[str, str]:
                     LIMIT 1
                     """
                 ).fetchone()
-            data_timestamp = row[0] if row else latest_file_timestamp([DB_PATH])
+            if row:
+                data_timestamps.append(pd.to_datetime(row[0], errors="coerce", utc=True))
         except sqlite3.Error:
-            data_timestamp = latest_file_timestamp([DB_PATH])
+            pass
 
     availability_timestamp = latest_file_timestamp(
         [*AVAILABILITY_LOCAL_FILES[:2], ROTATION_IMPACT_PATH]
     )
     return {
-        "data": format_refresh_timestamp(data_timestamp),
+        "data": format_refresh_timestamp(max(data_timestamps) if data_timestamps else None),
         "availability": format_refresh_timestamp(availability_timestamp),
     }
 
@@ -3334,21 +3338,25 @@ def overview_page() -> None:
         ]
     )
     board = team_leaderboard(filtered_teams).head(12)
-    board_display = board.rename(
-        columns={"rank": "RK", "team_name": "Team", "games": "GP", "wins": "W", "losses": "L", "win_pct": "WIN %", "point_diff": "+/-", "pir_for": "PIR"}
-    )[["RK", "team_code", "Team", "GP", "W", "L", "WIN %", "+/-", "PIR"]].rename(columns={"team_code": "Code"})
+    if board.empty:
+        board_display = pd.DataFrame(columns=["RK", "Code", "Team", "GP", "W", "L", "WIN %", "+/-", "PIR"])
+    else:
+        board_display = board.rename(
+            columns={"rank": "RK", "team_name": "Team", "games": "GP", "wins": "W", "losses": "L", "win_pct": "WIN %", "point_diff": "+/-", "pir_for": "PIR"}
+        )[["RK", "team_code", "Team", "GP", "W", "L", "WIN %", "+/-", "PIR"]].rename(columns={"team_code": "Code"})
     top_players = (
         filtered_players.groupby(["player_id", "player_name", "team_name"], as_index=False)
         .agg(GP=("game_code", "nunique"), PIR=("pir", "mean"), PTS=("points", "mean"))
         .sort_values("PIR", ascending=False)
     )
-    min_games = 5 if top_players["GP"].ge(5).any() else 1
-    top_players = (
-        top_players.query("GP >= @min_games")
-        .head(10)
-        .rename(columns={"player_name": "Player", "team_name": "Team"})
-        .round(2)
-    )
+    if not top_players.empty:
+        min_games = 5 if top_players["GP"].ge(5).any() else 1
+        top_players = (
+            top_players.query("GP >= @min_games")
+            .head(10)
+            .rename(columns={"player_name": "Player", "team_name": "Team"})
+            .round(2)
+        )
     left, right = st.columns([1.4, 1])
     with left:
         st.markdown('<div class="section-card"><div class="section-card-header"><div class="section-title">Team Leaderboard</div><div style="color:var(--muted);font-weight:800;">Ranked by wins</div></div>', unsafe_allow_html=True)
