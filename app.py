@@ -327,10 +327,17 @@ def compare_palette() -> tuple[str, str]:
     return COMPARE_LEFT_DARK, COMPARE_RIGHT_DARK
 
 
-def season_axis_label(value) -> str:
+def season_label(value) -> str:
     if pd.isna(value):
         return ""
-    return f"06/{int(value)}"
+    if isinstance(value, str) and "-" in value:
+        return value
+    start_year = int(value)
+    return f"{start_year}-{start_year + 1}"
+
+
+def season_axis_label(value) -> str:
+    return season_label(value)
 
 
 def plotly_dark(height: int = 420) -> dict:
@@ -1109,7 +1116,10 @@ def dark_html_table(
                 visual = f'<img class="player-photo" src="{photo}" />' if photo else f'<div class="avatar">{html.escape(initials)}</div>'
                 cell = f'<td class="{css}"><div class="team-cell">{visual}<span>{html.escape(str(value))}</span></div></td>'
             else:
-                text = f"{value:.2f}" if isinstance(value, float) else str(value)
+                if str(col).lower() in {"season", "lastseason"}:
+                    text = season_label(value)
+                else:
+                    text = f"{value:.2f}" if isinstance(value, float) else str(value)
                 cell = f'<td class="{css}">{html.escape(text)}</td>'
             cells.append(cell)
         rows.append("<tr>" + "".join(cells) + "</tr>")
@@ -3102,7 +3112,7 @@ with st.sidebar:
             <img src="{euroleague_logo_uri()}" />
             <div>
                 <div class="brand-main">Pro<br/>Analytics</div>
-                <div class="brand-sub">EuroLeague 2023-26</div>
+                <div class="brand-sub">EuroLeague 2023-2026</div>
             </div>
         </div>
         <div class="apply-button">Live Filters</div>
@@ -3117,7 +3127,7 @@ with st.sidebar:
     selected_search = st.selectbox("Search players or teams", search_options, format_func=lambda value: "Search players, teams..." if value == "" else value, label_visibility="collapsed")
     st.divider()
     st.subheader("Global Filters")
-    selected_seasons = st.multiselect("Seasons", all_seasons, default=all_seasons)
+    selected_seasons = st.multiselect("Seasons", all_seasons, default=all_seasons, format_func=season_label)
     if not selected_seasons:
         selected_seasons = all_seasons
     available_phase_codes = [code for code in PHASE_LABELS if code in set(teams["phase"].dropna().unique())]
@@ -3161,7 +3171,7 @@ st.markdown(
         <div class="topbar-title">EUROLEAGUE INTELLIGENCE</div>
         <div style="display:flex; gap:10px; align-items:center;">
             <div class="topbar-pill">LOCAL CACHE</div>
-            <div class="topbar-pill">2023-26</div>
+            <div class="topbar-pill">2023-2026</div>
         </div>
     </div>
     """,
@@ -3394,7 +3404,9 @@ def shot_page() -> None:
         ("FT%", f"{ft_made / ft_attempts * 100:.1f}%" if ft_attempts else "0.0%"),
         ("Zones", f"{view['zone'].nunique():,}"),
     ])
-    fig = px.scatter(view.dropna(subset=["coord_x", "coord_y"]), x="coord_x", y="coord_y", color="made", color_discrete_map={True: "#14b8a6", False: "#e05d5d"}, opacity=.62, hover_data=["season", "team_code", "player_name", "action", "zone"])
+    shot_view = view.dropna(subset=["coord_x", "coord_y"]).copy()
+    shot_view["Season"] = shot_view["season"].map(season_label)
+    fig = px.scatter(shot_view, x="coord_x", y="coord_y", color="made", color_discrete_map={True: "#14b8a6", False: "#e05d5d"}, opacity=.62, hover_data=["Season", "team_code", "player_name", "action", "zone"])
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(**plotly_dark(640), title="Field Goal Distribution", xaxis_visible=False, yaxis_visible=False)
     st.plotly_chart(polish_plotly_text(fig), width="stretch")
@@ -3435,7 +3447,7 @@ def ml_pir_page() -> None:
     c1, c2, c3, c4 = st.columns([.85, .85, 1.35, .9])
     default_season = int(schedule_view.sort_values("parsed_date").iloc[0]["season"]) if not upcoming.empty else season_options[0]
     season_index = season_options.index(default_season) if default_season in season_options else 0
-    schedule_season = int(c1.selectbox("Season", season_options, index=season_index, key="ml_schedule_season"))
+    schedule_season = int(c1.selectbox("Season", season_options, index=season_index, key="ml_schedule_season", format_func=season_label))
     season_schedule = schedule_view[schedule_view["season"].astype(int) == schedule_season].copy()
     round_options = sorted(season_schedule["round"].dropna().astype(int).unique().tolist(), reverse=upcoming.empty)
     if not upcoming.empty and not season_schedule.empty:
@@ -3596,7 +3608,7 @@ def ml_pir_page() -> None:
             ("Best ML Score", f"{predictions['Fantasy Score'].max():.1f}"),
             ("Best Raw PIR", f"{predictions['Fantasy PIR'].max():.1f}"),
             ("Avg Floor", f"{predictions['Floor PIR'].mean():.1f}"),
-            ("Round", f"{schedule_season} / {selected_round}"),
+            ("Round", f"{season_label(schedule_season)} / {selected_round}"),
             ("Schedule", schedule_source),
             ("Rest Days", "From schedule"),
             ("Model", str(predictions["model_name"].dropna().iloc[0]) if "model_name" in predictions and not predictions["model_name"].dropna().empty else "RidgeStacking"),
@@ -3777,7 +3789,7 @@ def match_center_page() -> None:
         .copy()
     )
     games["label"] = games.apply(
-        lambda row: f"{row['season']} - {PHASE_LABELS.get(row['phase'], row['phase'])} - {code_to_team.get(row['home_code'], row['home_code'])} {int(row['home_score'])} - {int(row['away_score'])} {code_to_team.get(row['away_code'], row['away_code'])}",
+        lambda row: f"{season_label(row['season'])} - {PHASE_LABELS.get(row['phase'], row['phase'])} - {code_to_team.get(row['home_code'], row['home_code'])} {int(row['home_score'])} - {int(row['away_score'])} {code_to_team.get(row['away_code'], row['away_code'])}",
         axis=1,
     )
     selected_label = st.selectbox("Select Game", games["label"].tolist())
