@@ -2183,6 +2183,68 @@ def normalize_availability_rows(availability: pd.DataFrame, source: str) -> pd.D
         return pd.DataFrame()
 
 
+def parse_availability_updated(value: str, latest_game_date: pd.Timestamp) -> pd.Timestamp | pd.NaT:
+    text = str(value or "").strip()
+    if not text:
+        return pd.NaT
+    parsed = pd.to_datetime(text, errors="coerce", utc=True)
+    if pd.notna(parsed):
+        return parsed
+    match = re.match(r"^(\d{1,2})/(\d{1,2})$", text)
+    if not match or pd.isna(latest_game_date):
+        return pd.NaT
+    day, month = (int(part) for part in match.groups())
+    dated = pd.Timestamp(year=int(latest_game_date.year), month=month, day=day, tz="UTC")
+    if dated > latest_game_date + pd.Timedelta(days=7):
+        dated = dated - pd.DateOffset(years=1)
+    return dated
+
+
+@st.cache_data(show_spinner=False)
+def load_latest_played_dates() -> pd.DataFrame:
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            logs = pd.read_sql(
+                """
+                SELECT b.player_id, b.team_code, b.minutes, g.game_date
+                FROM player_boxscores b
+                LEFT JOIN games g ON b.season = g.season AND b.game_code = g.game_code
+                WHERE b.player_id NOT IN ('Total', 'Team')
+                  AND b.player_name NOT IN ('Total', 'Team')
+                """,
+                conn,
+            )
+    except Exception:
+        return pd.DataFrame(columns=["player_id", "team_code", "latest_played_at"])
+    if logs.empty:
+        return pd.DataFrame(columns=["player_id", "team_code", "latest_played_at"])
+    logs["minutes_float"] = logs["minutes"].map(minutes_to_float)
+    logs["played_at"] = pd.to_datetime(logs["game_date"], errors="coerce", utc=True)
+    played = logs[(logs["minutes_float"].fillna(0) > 0) & logs["played_at"].notna()].copy()
+    if played.empty:
+        return pd.DataFrame(columns=["player_id", "team_code", "latest_played_at"])
+    return played.groupby(["player_id", "team_code"], as_index=False).agg(latest_played_at=("played_at", "max"))
+
+
+def remove_stale_availability_rows(availability: pd.DataFrame) -> pd.DataFrame:
+    if availability.empty:
+        return availability
+    played = load_latest_played_dates()
+    if played.empty:
+        return availability
+    latest_game_date = played["latest_played_at"].max()
+    out = availability.merge(
+        played,
+        left_on=["availability_player_id", "Availability Team"],
+        right_on=["player_id", "team_code"],
+        how="left",
+    )
+    out["updated_at"] = out["Availability Updated"].map(lambda value: parse_availability_updated(value, latest_game_date))
+    unavailable = pd.to_numeric(out["Availability Impact"], errors="coerce").fillna(1.0) < 1.0
+    stale = unavailable & out["updated_at"].notna() & out["latest_played_at"].notna() & (out["latest_played_at"] > out["updated_at"])
+    return out.loc[~stale, availability.columns].copy()
+
+
 def infer_news_status(text: str) -> tuple[str | None, float | None]:
     lowered = str(text).lower()
     if any(re.search(pattern, lowered) for pattern in NEWS_AVAILABLE_PATTERNS):
@@ -2325,6 +2387,7 @@ def load_player_availability(roster_names: tuple[tuple[str, str, str], ...] = tu
     if not frames:
         return pd.DataFrame(columns=["Availability Player", "availability_player_id", "Availability Team", "Availability Status", "Availability Impact", "Availability Note", "availability_key", "Availability Source", "Availability Updated", "Availability Role"])
     combined = pd.concat(frames, ignore_index=True)
+    combined = remove_stale_availability_rows(combined)
     combined["_priority"] = combined["Availability Source"].map({"BasketStories": 0, "News": 1}).fillna(2)
     combined = combined.sort_values("_priority").drop_duplicates(["availability_player_id", "availability_key", "Availability Team"], keep="last")
     return combined.drop(columns="_priority")

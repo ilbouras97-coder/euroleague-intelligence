@@ -302,6 +302,62 @@ def normalize_availability(frame: pd.DataFrame, roster: pd.DataFrame) -> pd.Data
     return out[["player", "player_id", "team_code", "status", "impact", "note", "updated", "role", "source", "source_url", "collected_at"]]
 
 
+def parse_availability_updated(value: str, latest_game_date: pd.Timestamp) -> pd.Timestamp | pd.NaT:
+    text = str(value or "").strip()
+    if not text:
+        return pd.NaT
+    parsed = pd.to_datetime(text, errors="coerce", utc=True)
+    if pd.notna(parsed):
+        return parsed
+    match = re.match(r"^(\d{1,2})/(\d{1,2})$", text)
+    if not match or pd.isna(latest_game_date):
+        return pd.NaT
+    day, month = (int(part) for part in match.groups())
+    dated = pd.Timestamp(year=int(latest_game_date.year), month=month, day=day, tz="UTC")
+    if dated > latest_game_date + pd.Timedelta(days=7):
+        dated = dated - pd.DateOffset(years=1)
+    return dated
+
+
+def latest_played_dates(db_path: Path = DB_PATH) -> pd.DataFrame:
+    with sqlite3.connect(db_path) as conn:
+        logs = pd.read_sql(
+            """
+            SELECT b.player_id, b.team_code, b.minutes, g.game_date
+            FROM player_boxscores b
+            LEFT JOIN games g ON b.season = g.season AND b.game_code = g.game_code
+            WHERE b.player_id NOT IN ('Total', 'Team')
+              AND b.player_name NOT IN ('Total', 'Team')
+            """,
+            conn,
+        )
+    if logs.empty:
+        return pd.DataFrame(columns=["player_id", "team_code", "latest_played_at"])
+    logs["minutes_float"] = logs["minutes"].map(parse_minutes)
+    logs["played_at"] = pd.to_datetime(logs["game_date"], errors="coerce", utc=True)
+    played = logs[(logs["minutes_float"].fillna(0) > 0) & logs["played_at"].notna()].copy()
+    if played.empty:
+        return pd.DataFrame(columns=["player_id", "team_code", "latest_played_at"])
+    return (
+        played.groupby(["player_id", "team_code"], as_index=False)
+        .agg(latest_played_at=("played_at", "max"))
+    )
+
+
+def remove_stale_availability(availability: pd.DataFrame, db_path: Path = DB_PATH) -> pd.DataFrame:
+    if availability.empty:
+        return availability
+    played = latest_played_dates(db_path)
+    if played.empty:
+        return availability
+    latest_game_date = played["latest_played_at"].max()
+    out = availability.merge(played, on=["player_id", "team_code"], how="left")
+    out["updated_at"] = out["updated"].map(lambda value: parse_availability_updated(value, latest_game_date))
+    unavailable = pd.to_numeric(out["impact"], errors="coerce").fillna(1.0) < 1.0
+    stale = unavailable & out["updated_at"].notna() & out["latest_played_at"].notna() & (out["latest_played_at"] > out["updated_at"])
+    return out.loc[~stale, availability.columns].copy()
+
+
 def build_rotation_impact(roster: pd.DataFrame, availability: pd.DataFrame, db_path: Path = DB_PATH) -> pd.DataFrame:
     if roster.empty:
         return pd.DataFrame()
@@ -380,6 +436,7 @@ def collect(db_path: Path = DB_PATH, output_dir: Path | None = None) -> tuple[pd
     roster = latest_roster(db_path)
     frames = [fetch_basketstories(), fetch_news(roster)]
     availability = normalize_availability(pd.concat([frame for frame in frames if not frame.empty], ignore_index=True) if any(not frame.empty for frame in frames) else pd.DataFrame(), roster)
+    availability = remove_stale_availability(availability, db_path)
     rotation = build_rotation_impact(roster, availability, db_path)
     availability.to_csv(output_dir / "player_availability_collected.csv", index=False)
     rotation.to_csv(output_dir / "rotation_impact.csv", index=False)
