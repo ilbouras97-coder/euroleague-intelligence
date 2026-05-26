@@ -12,6 +12,7 @@ env/
 streamlit_*.log
 *.out.log
 *.err.log
+logs/
 
 tmp_coach_imgs/
 tmp_coach_sheet.png

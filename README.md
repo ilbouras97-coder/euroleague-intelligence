@@ -36,8 +36,29 @@ For a normal refresh without downloading data that already exists in the cache:
 
 Or:
 
-python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025
+python scripts\refresh_data.py
+
+This refreshes historical seasons from cache, force-refreshes the current season,
+rebuilds ML features, and collects the injury/availability report into:
+
+- data/player_availability_collected.csv
+- data/rotation_impact.csv
 
 For a full refresh from the API, use this only if necessary:
 
-python -m src.euroleague_dashboard.ingest --start-season 2023 --end-season 2025 --force-refresh
+python scripts\refresh_data.py --full-refresh
+
+To refresh only the injury/availability report:
+
+python scripts\refresh_data.py --availability-only
+
+## 5. Automate Refreshes
+
+On Windows, install a daily scheduled task from PowerShell:
+
+powershell -ExecutionPolicy Bypass -File .\scripts\install_refresh_task.ps1 -Time 09:00
+
+Scheduled-task logs are written under the local logs folder.
+
+GitHub Actions also includes a daily `Refresh EuroLeague Data` workflow and a
+manual run button. It commits refreshed generated outputs when data changes.
