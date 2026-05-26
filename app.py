@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import html
 import re
+import sqlite3
 import xml.etree.ElementTree as ET
 import unicodedata
 from collections import defaultdict
@@ -701,6 +702,27 @@ def apply_styles(theme: str = "Dark") -> None:
         .brand-block img {width: 58px; height: 58px; object-fit: contain; border-radius: 999px; filter: drop-shadow(0 8px 18px rgba(0,0,0,.35));}
         .brand-main {color: var(--orange); font-size: 1.58rem; line-height: .96; font-weight: 900;}
         .brand-sub {color: #94a3b8; font-size: .82rem; margin-top: 5px;}
+        .refresh-status {
+            margin: -8px 28px 18px;
+            padding: 12px 14px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: rgba(16,29,47,.72);
+            color: var(--muted);
+            font-size: .76rem;
+            line-height: 1.45;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+        }
+        .refresh-status strong {
+            display: block;
+            color: #eaf2ff;
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 4px;
+        }
+        .refresh-row {display: flex; justify-content: space-between; gap: 10px;}
+        .refresh-row span:last-child {color: #ffffff; font-weight: 800; text-align: right;}
         .apply-button {
             background: linear-gradient(135deg, #d95f22, #f08a42);
             color: white;
@@ -3080,6 +3102,50 @@ def load_date_bounds():
     return available_date_bounds(DB_PATH)
 
 
+def format_refresh_timestamp(timestamp) -> str:
+    if timestamp is None or pd.isna(timestamp):
+        return "Not available"
+    parsed = pd.to_datetime(timestamp, errors="coerce", utc=True)
+    if pd.isna(parsed):
+        return "Not available"
+    return parsed.tz_convert("Europe/Athens").strftime("%d/%m/%Y %H:%M")
+
+
+def latest_file_timestamp(paths: list[Path]):
+    mtimes = [path.stat().st_mtime for path in paths if path.exists()]
+    if not mtimes:
+        return None
+    return pd.Timestamp(max(mtimes), unit="s", tz="UTC")
+
+
+@st.cache_data(show_spinner=False)
+def load_refresh_status() -> dict[str, str]:
+    data_timestamp = None
+    if DB_PATH.exists():
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    """
+                    SELECT finished_at
+                    FROM ingestion_runs
+                    WHERE status = 'success' AND finished_at IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+            data_timestamp = row[0] if row else latest_file_timestamp([DB_PATH])
+        except sqlite3.Error:
+            data_timestamp = latest_file_timestamp([DB_PATH])
+
+    availability_timestamp = latest_file_timestamp(
+        [*AVAILABILITY_LOCAL_FILES[:2], ROTATION_IMPACT_PATH]
+    )
+    return {
+        "data": format_refresh_timestamp(data_timestamp),
+        "availability": format_refresh_timestamp(availability_timestamp),
+    }
+
+
 with st.sidebar:
     st.caption("Appearance")
     theme_mode = st.radio("Theme", ["Dark", "Light"], horizontal=True, key="app_theme")
@@ -3104,6 +3170,7 @@ team_lookup = dict(
 )
 code_to_team = {code: name for name, code in team_lookup.items()}
 min_date, max_date = load_date_bounds()
+refresh_status = load_refresh_status()
 
 with st.sidebar:
     st.markdown(
@@ -3114,6 +3181,11 @@ with st.sidebar:
                 <div class="brand-main">Pro<br/>Analytics</div>
                 <div class="brand-sub">EuroLeague 2023-2026</div>
             </div>
+        </div>
+        <div class="refresh-status">
+            <strong>Last Refresh</strong>
+            <div class="refresh-row"><span>Data</span><span>{html.escape(refresh_status["data"])}</span></div>
+            <div class="refresh-row"><span>Injury</span><span>{html.escape(refresh_status["availability"])}</span></div>
         </div>
         <div class="apply-button">Live Filters</div>
         """,
