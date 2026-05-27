@@ -41,6 +41,7 @@ st.set_page_config(page_title="EuroLeague Intelligence", layout="wide", initial_
 ASSET_DIR = PROJECT_ROOT / "assets" / "logos"
 TEAM_LOGO_DIR = ASSET_DIR / "teams"
 COACH_PHOTO_DIR = PROJECT_ROOT / "assets" / "coach_photos"
+PLAYER_PHOTO_DIR = PROJECT_ROOT / "assets" / "player_photos"
 
 PLAYER_STATS = PLAYER_STAT_COLUMNS
 TEAM_STATS = ["points", "points_allowed", "point_diff", "pir", "pir_allowed", "assists", "total_rebounds"]
@@ -166,6 +167,13 @@ def image_data_uri(path: Path) -> str:
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
 
 
+def project_asset_path(path_value) -> Path | None:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    normalized = Path(path_value.strip().replace("\\", "/"))
+    return normalized if normalized.is_absolute() else PROJECT_ROOT / normalized
+
+
 def player_name_to_display_name(player_name: str) -> str:
     parts = [part.strip() for part in str(player_name).replace(".", "").split(",")]
     if len(parts) >= 2:
@@ -269,18 +277,24 @@ def euroleague_logo_uri() -> str:
 
 def player_photo_uri(player_id: str, profiles_df: pd.DataFrame) -> str:
     fallback_path = PLAYER_PHOTO_FALLBACKS.get(str(player_id))
+    asset_path = PLAYER_PHOTO_DIR / f"{str(player_id)}.png"
     if profiles_df.empty or not player_id:
-        return image_data_uri(PROJECT_ROOT / fallback_path) if fallback_path else ""
+        return image_data_uri(asset_path) or (image_data_uri(PROJECT_ROOT / fallback_path) if fallback_path else "")
     match = profiles_df[profiles_df["player_id"] == player_id]
     if match.empty:
-        return image_data_uri(PROJECT_ROOT / fallback_path) if fallback_path else ""
+        return image_data_uri(asset_path) or (image_data_uri(PROJECT_ROOT / fallback_path) if fallback_path else "")
     local_path = match.iloc[0].get("local_image_path")
-    if not isinstance(local_path, str) or not local_path:
+    resolved_path = project_asset_path(local_path)
+    local_photo = image_data_uri(resolved_path) if resolved_path else ""
+    if not local_photo:
+        asset_photo = image_data_uri(asset_path)
+        if asset_photo:
+            return asset_photo
         image_url = match.iloc[0].get("image_url")
         if isinstance(image_url, str) and image_url:
             return image_url
         return image_data_uri(PROJECT_ROOT / fallback_path) if fallback_path else ""
-    return image_data_uri(PROJECT_ROOT / local_path)
+    return local_photo
 
 
 def player_photo_uri_for_name(player_id: str, player_name: str, profiles_df: pd.DataFrame) -> str:
@@ -503,6 +517,15 @@ def apply_styles(theme: str = "Dark") -> None:
         .topbar {background: rgba(255,255,255,.88) !important; border-bottom-color: var(--line) !important;}
         .topbar-title, .identity-title {color: var(--text) !important; text-shadow: none !important;}
         .topbar-pill {background: #ffffff !important; color: var(--muted) !important; border-color: var(--line) !important;}
+        .refresh-status {
+            background: #ffffff !important;
+            color: #64748b !important;
+            border-color: var(--line) !important;
+            box-shadow: 0 10px 24px rgba(15,23,42,.06) !important;
+        }
+        .refresh-status strong {color: #334155 !important;}
+        .refresh-row span:first-child {color: #64748b !important;}
+        .refresh-row span:last-child {color: #172033 !important;}
         .brand-sub, .hero-copy, .player-sub {color: #64748b !important;}
         .apply-button {color: #ffffff !important;}
         .hero-card, .identity-card, .section-card, .metric-card {
